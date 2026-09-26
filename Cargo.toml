@@ -1,0 +1,28 @@
+[package]
+name = "vitals"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Responsive terminal monitor of CPU, memory, swap and disk space, with htop's load average, tasks and uptime, and 50 color themes"
+license = "MIT"
+repository = "https://github.com/victorlcampos/vitals"
+readme = "README.md"
+keywords = ["system-monitor", "tui", "cpu", "memory", "disk"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4", features = ["derive"] }
+deunicode = "1"
+ratatui = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = { version = "0.38", default-features = false, features = ["system", "disk", "component"] }
+unicode-width = "0.2"
+ureq = { version = "3", features = ["json", "platform-verifier"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+strip = true
