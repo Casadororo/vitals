@@ -13,7 +13,7 @@ use super::widgets::{LEVELS, Piece, bar, fit_rows, graph, natural_width, shorten
 use crate::app::{App, GraphStyle};
 use crate::i18n::{Lang, Text, percent};
 use crate::layout::{CORE_GAP, CoreView, Item, Kind, core_index_width};
-use crate::limits::{Period, Source, Usage, Window, unix_now};
+use crate::limits::{LIVE_FRESH_SECS, Period, Source, Usage, Window, unix_now};
 use crate::model::{CpuTimes, Disk, Part, PressureLevel, Sample, Split, ratio};
 use crate::theme::Palette;
 
@@ -265,17 +265,21 @@ fn expired(window: &Window, now: i64) -> bool {
     window.resets_at.is_some_and(|at| at <= now)
 }
 
-/// "Claude · Max 20x · live", or how long ago the tool saved its figures.
+/// "Claude · Max 20x · live", or how long ago the figures are when they are
+/// not fresh: a login the tool has not renewed yet leaves the last live
+/// reading ageing in place instead of newer saved figures.
 fn limit_tool(ctx: &Ctx, usage: &Usage, area: Rect, buf: &mut Buffer) {
     let text = ctx.text;
     let mut name = vec![Span::raw(usage.tool.name()).bold()];
     if let Some(plan) = &usage.plan {
         name.push(ctx.muted(format!(" {plan}")));
     }
+    let age = unix_now().saturating_sub(usage.as_of).max(0) as u64;
     let freshness = match usage.source {
-        Source::Live => Span::styled(text.live, Style::new().fg(ctx.palette.low)),
-        Source::Saved => {
-            let age = unix_now().saturating_sub(usage.as_of).max(0) as u64;
+        Source::Live if age <= LIVE_FRESH_SECS as u64 => {
+            Span::styled(text.live, Style::new().fg(ctx.palette.low))
+        }
+        _ => {
             let ago = text.ago.replace("{}", &ctx.lang.duration(age));
             if age >= 3600 {
                 Span::styled(ago, Style::new().fg(ctx.palette.middle))

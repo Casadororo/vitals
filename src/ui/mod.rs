@@ -462,6 +462,34 @@ pub mod tests {
     }
 
     #[test]
+    fn a_stale_live_reading_shows_its_age_instead_of_live() {
+        use crate::limits::{Period, Source, Tool, Usage, Window, unix_now};
+        let now = unix_now();
+        let mut app = demo::app(Lang::En);
+        app.limits = vec![Usage {
+            tool: Tool::Claude,
+            plan: None,
+            windows: vec![Window {
+                period: Period::Session,
+                used: 0.5,
+                resets_at: Some(now + 3600),
+                model: None,
+            }],
+            source: Source::Live,
+            as_of: now - 25 * 3600,
+        }];
+        let text = screen(&draw(&app, 120, 40));
+        assert!(
+            !text.contains("live"),
+            "a day-old reading is not live:\n{text}"
+        );
+        assert!(text.contains("ago"), "{text}");
+        app.limits[0].as_of = now;
+        let text = screen(&draw(&app, 120, 40));
+        assert!(text.contains("live"), "{text}");
+    }
+
+    #[test]
     fn l_hides_the_ai_limits() {
         let mut app = demo::app(Lang::En);
         app.on_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));

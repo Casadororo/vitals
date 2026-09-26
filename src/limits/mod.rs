@@ -16,6 +16,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// How often the figures are read again. The addresses are asked less often.
 const EVERY: Duration = Duration::from_secs(30);
+/// Seconds a live reading still counts as just asked. Older than this, the
+/// tool has not renewed its login for a while, so the figures are shown with
+/// their age instead of the live badge.
+pub const LIVE_FRESH_SECS: i64 = 300;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tool {
