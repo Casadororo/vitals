@@ -142,6 +142,8 @@ fn worth(importance: u8, width: u16, rows: u16, natural: u16) -> i64 {
 struct Want {
     item: Item,
     importance: u8,
+    /// Granted first within its importance when rows run short.
+    priority: u16,
     rows: u16,
     /// Share of the spare rows it takes.
     stretch: u16,
@@ -158,6 +160,7 @@ fn line(item: Item, importance: u8) -> Want {
     Want {
         item,
         importance,
+        priority: 0,
         rows: 1,
         stretch: 0,
         grows: None,
@@ -249,7 +252,17 @@ fn wants(kind: Kind, width: u16, content: &Content) -> Vec<Want> {
                 }
                 list.push(line(Item::LimitTool(tool), 3));
                 for window in 0..usize::from(windows) {
-                    list.push(line(Item::Limit(tool, window), 1));
+                    let used = content
+                        .limit_used
+                        .get(tool)
+                        .and_then(|used| used.get(window))
+                        .copied()
+                        .unwrap_or(0);
+                    // Granted worst first when rows run short; shown in place.
+                    list.push(Want {
+                        priority: 1000 - used,
+                        ..line(Item::Limit(tool, window), 1)
+                    });
                 }
             }
         }
@@ -258,35 +271,8 @@ fn wants(kind: Kind, width: u16, content: &Content) -> Vec<Want> {
 }
 
 /// What a panel shows without a box, a row each, in display order: the
-/// lines of the box, without graphs and cores. The AI limits go worst first,
-/// so a narrow pane shows the quota closest to running out.
+/// lines of the box, without graphs and cores.
 fn bare_lines(kind: Kind, content: &Content) -> Vec<Want> {
-    if kind == Kind::Limits {
-        let mut order: Vec<(usize, usize, u16)> = Vec::new();
-        for (tool, &windows) in content.limits.iter().enumerate() {
-            for window in 0..usize::from(windows) {
-                let used = content
-                    .limit_used
-                    .get(tool)
-                    .and_then(|used| used.get(window))
-                    .copied()
-                    .unwrap_or(0);
-                order.push((tool, window, used));
-            }
-        }
-        // Stable: ties keep the session-then-week order the tools report.
-        order.sort_by(|a, b| b.2.cmp(&a.2));
-        let mut list = Vec::with_capacity(order.len() + content.limits.len());
-        for (tool, window, _) in order {
-            list.push(line(Item::Limit(tool, window), 1));
-        }
-        for (tool, &windows) in content.limits.iter().enumerate() {
-            if windows > 0 {
-                list.push(line(Item::LimitTool(tool), 3));
-            }
-        }
-        return list;
-    }
     let content = Content {
         graphs: false,
         show_cores: false,
@@ -459,41 +445,50 @@ fn fill_boxed(kinds: &[Kind], area: Rect, content: &Content) -> Option<(Vec<Pane
         .collect();
     let mut score = BOX_WORTH * kinds.len() as i64;
     let mut essentials = 0;
+    // Visit order within a pass: the worst AI quota first, then panel order.
+    let mut order: Vec<(u8, u16, usize, usize)> = Vec::new();
+    for (panel, list) in lists.iter().enumerate() {
+        for (index, want) in list.iter().enumerate() {
+            order.push((want.importance, want.priority, panel, index));
+        }
+    }
+    order.sort_by(|a, b| (a.1, a.2, a.3).cmp(&(b.1, b.2, b.3)));
     for importance in 0..WORTH.len() as u8 {
-        for (panel, list) in lists.iter().enumerate() {
-            for (index, want) in list.iter().enumerate() {
-                if want.importance == importance {
-                    if want.rows <= left {
-                        rows[panel][index] = want.rows;
-                        left -= want.rows;
-                        score += if want.text {
-                            worth(importance, inner_width, 1, want.natural)
-                        } else {
-                            WORTH[usize::from(importance)]
-                        };
-                        essentials += usize::from(importance == 0);
-                    } else if importance == 0 {
-                        return None;
-                    }
-                }
-                if let Some((grows_at, bigger, bigger_rows)) = want.grows
-                    && grows_at == importance
-                    && rows[panel][index] > 0
-                    && bigger_rows >= rows[panel][index]
-                    && bigger_rows - rows[panel][index] <= left
-                {
-                    left -= bigger_rows - rows[panel][index];
-                    score += if bigger == want.item {
-                        // A second row is worth what the line could not show on one.
-                        let line = want.importance;
-                        worth(line, inner_width, bigger_rows, want.natural)
-                            - worth(line, inner_width, rows[panel][index], want.natural)
+        // Every item is seen on every pass: a line granted on an early pass
+        // can still grow into its bigger version on a later one.
+        for &(_, _, panel, index) in order.iter() {
+            let want = &lists[panel][index];
+            if want.importance == importance {
+                if want.rows <= left {
+                    rows[panel][index] = want.rows;
+                    left -= want.rows;
+                    score += if want.text {
+                        worth(importance, inner_width, 1, want.natural)
                     } else {
                         WORTH[usize::from(importance)]
                     };
-                    rows[panel][index] = bigger_rows;
-                    items[panel][index] = bigger;
+                    essentials += usize::from(importance == 0);
+                } else if importance == 0 {
+                    return None;
                 }
+            }
+            if let Some((grows_at, bigger, bigger_rows)) = want.grows
+                && grows_at == importance
+                && rows[panel][index] > 0
+                && bigger_rows >= rows[panel][index]
+                && bigger_rows - rows[panel][index] <= left
+            {
+                left -= bigger_rows - rows[panel][index];
+                score += if bigger == want.item {
+                    // A second row is worth what the line could not show on one.
+                    let line = want.importance;
+                    worth(line, inner_width, bigger_rows, want.natural)
+                        - worth(line, inner_width, rows[panel][index], want.natural)
+                } else {
+                    WORTH[usize::from(importance)]
+                };
+                rows[panel][index] = bigger_rows;
+                items[panel][index] = bigger;
             }
         }
     }
@@ -566,16 +561,25 @@ fn fill_bare(kinds: &[Kind], area: Rect, content: &Content) -> (Vec<Panel>, i64,
     let mut left = area.height;
     let mut score = 0;
     let mut essentials = 0;
+    // Granted by importance, then the worst AI quota, then panel order; the
+    // panel still shows them in its own order.
+    let mut order: Vec<(u8, u16, usize, usize)> = Vec::new();
+    for (panel, list) in lists.iter().enumerate() {
+        for (index, want) in list.iter().enumerate() {
+            order.push((want.importance, want.priority, panel, index));
+        }
+    }
+    order.sort_by(|a, b| (a.1, a.2, a.3).cmp(&(b.1, b.2, b.3)));
     for importance in 0..WORTH.len() as u8 {
-        for (panel, list) in lists.iter().enumerate() {
-            for (index, want) in list.iter().enumerate() {
-                if want.importance == importance && left > 0 {
-                    granted[panel][index] = true;
-                    left -= 1;
-                    score += worth(importance, area.width, 1, want.natural);
-                    essentials += usize::from(importance == 0);
-                }
+        for &(_, _, panel, index) in order.iter().filter(|&&(imp, _, _, _)| imp == importance) {
+            if left == 0 {
+                break;
             }
+            granted[panel][index] = true;
+            left -= 1;
+            let want = &lists[panel][index];
+            score += worth(importance, area.width, 1, want.natural);
+            essentials += usize::from(importance == 0);
         }
     }
     let mut panels = Vec::new();
@@ -746,9 +750,8 @@ mod tests {
         assert_eq!(last.area.bottom(), screen.footer.unwrap().y, "no gap below");
     }
 
-    #[test]
-    fn bare_limit_lines_show_the_worst_quota_first() {
-        let content = Content {
+    fn limit_content() -> Content {
+        Content {
             limits: [2, 2, 0, 0],
             limit_used: [
                 [200, 990, 0, 0, 0, 0, 0, 0],
@@ -757,43 +760,49 @@ mod tests {
                 [0; 8],
             ],
             ..content()
-        };
-        let lines: Vec<Item> = bare_lines(Kind::Limits, &content)
+        }
+    }
+
+    fn bare_items(content: &Content, height: u16) -> Vec<Item> {
+        let area = Rect::new(0, 0, 20, height);
+        let (panels, _, _) = fill_bare(&[Kind::Limits], area, content);
+        panels
             .into_iter()
-            .map(|want| want.item)
-            .collect();
+            .flat_map(|panel| panel.items.into_iter().map(|(item, _)| item))
+            .collect()
+    }
+
+    #[test]
+    fn a_single_bare_row_shows_the_worst_quota() {
+        // Session at 20%, week at 99%: the week shows.
+        assert_eq!(bare_items(&limit_content(), 1), [Item::Limit(0, 1)]);
+    }
+
+    #[test]
+    fn short_bare_columns_keep_the_worst_quotas_in_place() {
         assert_eq!(
-            lines,
-            [
-                Item::Limit(0, 1), // 99% used, only 1% left: shows first
-                Item::Limit(1, 0), // 31%
-                Item::Limit(0, 0), // 20%
-                Item::Limit(1, 1), // 12%
-                Item::LimitTool(0),
-                Item::LimitTool(1),
-            ]
+            bare_items(&limit_content(), 2),
+            [Item::Limit(0, 1), Item::Limit(1, 0)]
+        );
+        assert_eq!(
+            bare_items(&limit_content(), 3),
+            [Item::Limit(0, 0), Item::Limit(0, 1), Item::Limit(1, 0)]
         );
     }
 
     #[test]
-    fn a_short_bare_column_keeps_only_the_worst_quotas() {
-        let content = Content {
-            limits: [2, 2, 0, 0],
-            limit_used: [
-                [200, 990, 0, 0, 0, 0, 0, 0],
-                [310, 120, 0, 0, 0, 0, 0, 0],
-                [0; 8],
-                [0; 8],
-            ],
-            ..content()
-        };
-        let area = Rect::new(0, 0, 20, 2);
-        let (panels, _, _) = fill_bare(&[Kind::Limits], area, &content);
+    fn a_short_box_keeps_the_worst_quotas_without_orphan_headers() {
+        let content = limit_content();
+        let area = Rect::new(0, 0, 40, 5);
+        let (panels, _, _) = fill_boxed(&[Kind::Limits], area, &content).unwrap();
         let items: Vec<Item> = panels
             .into_iter()
             .flat_map(|panel| panel.items.into_iter().map(|(item, _)| item))
             .collect();
-        assert_eq!(items, [Item::Limit(0, 1), Item::Limit(1, 0)]);
+        assert_eq!(
+            items,
+            [Item::Limit(0, 0), Item::Limit(0, 1), Item::Limit(1, 0)]
+        );
     }
 
     #[test]
