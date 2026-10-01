@@ -452,7 +452,7 @@ fn fill_boxed(kinds: &[Kind], area: Rect, content: &Content) -> Option<(Vec<Pane
             order.push((want.importance, want.priority, panel, index));
         }
     }
-    order.sort_by(|a, b| (a.1, a.2, a.3).cmp(&(b.1, b.2, b.3)));
+    order.sort_by_key(|&(_, priority, panel, index)| (priority, panel, index));
     for importance in 0..WORTH.len() as u8 {
         // Every item is seen on every pass: a line granted on an early pass
         // can still grow into its bigger version on a later one.
@@ -569,7 +569,7 @@ fn fill_bare(kinds: &[Kind], area: Rect, content: &Content) -> (Vec<Panel>, i64,
             order.push((want.importance, want.priority, panel, index));
         }
     }
-    order.sort_by(|a, b| (a.1, a.2, a.3).cmp(&(b.1, b.2, b.3)));
+    order.sort_by_key(|&(_, priority, panel, index)| (priority, panel, index));
     for importance in 0..WORTH.len() as u8 {
         for &(_, _, panel, index) in order.iter().filter(|&&(imp, _, _, _)| imp == importance) {
             if left == 0 {
