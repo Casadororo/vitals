@@ -204,6 +204,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cerne"
+version = "0.1.0"
+source = "git+https://github.com/victorlcampos/cerne?tag=v0.1.0#04ed774aada318cee60ac7ad0ec7faa5667fd791"
+dependencies = [
+ "deunicode",
+ "ratatui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2315,9 +2326,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "vitals"
 version = "0.1.0"
 dependencies = [
+ "cerne",
  "chrono",
  "clap",
- "deunicode",
  "libc",
  "ratatui",
  "serde",

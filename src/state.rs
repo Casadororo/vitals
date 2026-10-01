@@ -1,11 +1,11 @@
 //! What vitals remembers between runs: theme, graph style, which parts show
-//! and how often it reads, in one JSON file saved on every change. Copies
-//! running side by side share the file and pick up each other's changes.
+//! and how often it reads, in one JSON file saved on every change (cerne's
+//! store). Copies running side by side share the file and pick up each
+//! other's changes.
 
-use std::fs;
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
+use cerne::store::{Origin, Persist};
 use serde::{Deserialize, Serialize};
 
 use crate::app::App;
@@ -37,96 +37,31 @@ impl Default for State {
     }
 }
 
+/// Keeps the state file and the app in step.
+pub type Store = cerne::store::Store<State>;
+
 /// `$XDG_CONFIG_HOME/vitals/state.json`, or `~/.config/...`, or `%APPDATA%\...`.
 pub fn default_path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|dir| dir.is_absolute())
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-        .or_else(|| std::env::var_os("APPDATA").map(PathBuf::from))?;
-    Some(base.join("vitals").join("state.json"))
+    cerne::store::default_path("vitals")
 }
 
-/// Keeps the state file and the app in step.
-pub struct Store {
-    path: PathBuf,
-    /// The file's text when last read or written here.
-    seen: Option<String>,
-    /// What this copy last wrote, to tell its own writes from the others'.
-    written: Option<String>,
-    /// The app's state as last saved or loaded, to notice changes.
-    synced: Option<State>,
-}
+impl Persist for App {
+    type State = State;
 
-impl Store {
-    pub fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            seen: None,
-            written: None,
-            synced: None,
-        }
+    fn state(&self) -> State {
+        App::state(self)
     }
 
-    /// Restores the saved state. A file that cannot be read as a state is set
-    /// aside as `*.broken`, not lost.
-    pub fn load(&mut self, app: &mut App) {
-        let Ok(text) = fs::read_to_string(&self.path) else {
-            return;
-        };
-        match serde_json::from_str::<State>(&text) {
-            Ok(state) => {
-                app.restore(&state);
-                self.seen = Some(text);
-                self.synced = Some(app.state());
-            }
-            Err(_) => {
-                let _ = fs::rename(&self.path, self.path.with_extension("json.broken"));
-            }
-        }
+    fn restore(&mut self, state: &State, _: Origin) {
+        App::restore(self, state);
     }
-
-    /// Takes in what another copy saved, then saves what changed here.
-    pub fn sync(&mut self, app: &mut App) -> io::Result<()> {
-        if let Ok(text) = fs::read_to_string(&self.path)
-            && self.seen.as_ref() != Some(&text)
-        {
-            if self.written.as_ref() != Some(&text)
-                && let Ok(state) = serde_json::from_str::<State>(&text)
-            {
-                app.restore(&state);
-                self.synced = Some(app.state());
-            }
-            self.seen = Some(text);
-        }
-
-        let state = app.state();
-        if self.synced.as_ref() == Some(&state) {
-            return Ok(());
-        }
-        let text = serde_json::to_string_pretty(&state).map_err(io::Error::other)? + "\n";
-        write_atomically(&self.path, &text)?;
-        self.seen = Some(text.clone());
-        self.written = Some(text);
-        self.synced = Some(state);
-        Ok(())
-    }
-}
-
-/// A crash or power cut leaves either the old file or the new one, whole.
-fn write_atomically(path: &Path, text: &str) -> io::Result<()> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    let mut file = fs::File::create(&temporary)?;
-    file.write_all(text.as_bytes())?;
-    file.sync_all()?;
-    fs::rename(&temporary, path)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
+
     use super::*;
     use crate::app::GraphStyle;
     use crate::i18n::Lang;

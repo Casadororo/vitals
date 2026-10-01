@@ -264,7 +264,7 @@ pub fn shorten(text: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::THEMES;
+    use crate::theme::{Paint, THEMES};
 
     fn row(buf: &Buffer) -> String {
         (0..buf.area.width)

@@ -75,7 +75,7 @@ struct Cli {
     state: Option<PathBuf>,
 
     /// Prints one screen of the given size, such as 120x40, and exits
-    #[arg(long, hide = true, value_name = "WxH", value_parser = parse_size)]
+    #[arg(long, hide = true, value_name = "WxH", value_parser = snapshot::parse_size)]
     snapshot: Option<(u16, u16)>,
 
     /// With --snapshot, writes an SVG picture to this file instead
@@ -85,18 +85,6 @@ struct Cli {
     /// With --snapshot, shows made-up readings instead of this computer's
     #[arg(long, hide = true)]
     demo: bool,
-}
-
-fn parse_size(text: &str) -> Result<(u16, u16), String> {
-    let (width, height) = text
-        .split_once('x')
-        .ok_or_else(|| format!("expected WIDTHxHEIGHT, got {text:?}"))?;
-    let number = |text: &str| {
-        text.trim()
-            .parse::<u16>()
-            .map_err(|error| error.to_string())
-    };
-    Ok((number(width)?, number(height)?))
 }
 
 /// What wakes the screen up: a new reading or something the person did.

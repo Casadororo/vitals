@@ -11,9 +11,9 @@ keywords = ["system-monitor", "tui", "cpu", "memory", "disk"]
 categories = ["command-line-utilities"]
 
 [dependencies]
+cerne = { git = "https://github.com/victorlcampos/cerne", tag = "v0.1.0", features = ["store", "tui"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
-deunicode = "1"
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

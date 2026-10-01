@@ -9,7 +9,7 @@ use crate::layout::Content;
 use crate::limits::Usage;
 use crate::model::Sample;
 use crate::state::State;
-use crate::theme::{self, Palette, THEMES, fold};
+use crate::theme::{self, Paint, Palette, THEMES, fold};
 
 /// How the graphs are drawn.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]

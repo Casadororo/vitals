@@ -16,7 +16,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::{App, Mode, ThemePicker};
 use crate::i18n::Keys;
 use crate::layout::{self, Screen};
-use crate::theme::THEMES;
+use crate::theme::{Paint, THEMES};
 use panels::Ctx;
 use widgets::{Piece, fit};
 
