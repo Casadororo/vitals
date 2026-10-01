@@ -212,10 +212,11 @@ much of each is used and when it starts over.
   or in `~/.claude/.credentials.json`. vitals never renews that login, so it
   cannot log Claude Code out: when the login has expired, it waits for Claude
   Code to renew it and meanwhile shows the last figures Claude Code saved in
-  `~/.claude.json`, with how old they are. Weekly limits of a single model
-  show up once they count. Other folders beside `~/.claude` with a Claude
-  Code login, such as `~/.claude-2` for a second account, show too, each
-  named after its folder (Claude 2); `--claude-dir` picks the folders instead.
+  `~/.claude.json`, with how old they are. Weekly limits of a single model,
+  such as Fable's, show up even at 0%. Other folders beside `~/.claude`
+  with a Claude Code login, such as `~/.claude-2` for a second account,
+  show too, each named after its folder (Claude 2); `--claude-dir` picks
+  the folders instead.
 - **Codex.** vitals asks `chatgpt.com/backend-api/wham/usage`, the address
   Codex's `/status` asks, with the login in `~/.codex/auth.json`; otherwise it
   reads the figures of the last Codex session in `~/.codex/sessions`. Plans

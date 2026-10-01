@@ -253,7 +253,7 @@ fn saved_usage(config: &Value) -> Option<Usage> {
 }
 
 /// The usage answer: `five_hour` and `seven_day`, plus the weekly limits of
-/// single models once they count.
+/// single models, such as Fable's, even before they count.
 fn parse(body: &Value, source: Source, as_of: i64, plan: Option<String>) -> Option<Usage> {
     let mut windows: Vec<Window> = [("five_hour", Period::Session), ("seven_day", Period::Week)]
         .into_iter()
@@ -269,7 +269,7 @@ fn parse(body: &Value, source: Source, as_of: i64, plan: Option<String>) -> Opti
         .collect();
     for limit in body["limits"].as_array().into_iter().flatten() {
         let percent = limit["percent"].as_f64().unwrap_or(0.0);
-        if limit["kind"] != "weekly_scoped" || percent < 1.0 {
+        if limit["kind"] != "weekly_scoped" {
             continue;
         }
         windows.push(Window {
@@ -311,13 +311,14 @@ mod tests {
     fn reads_the_session_and_the_week() {
         let body: Value = serde_json::from_str(ANSWER).unwrap();
         let usage = parse(&body, Source::Live, 100, Some("Max 20x".into())).unwrap();
-        assert_eq!(usage.windows.len(), 3, "a model at 0% is left out");
+        assert_eq!(usage.windows.len(), 4, "a model at 0% shows too");
         let session = &usage.windows[0];
         assert_eq!(session.period, Period::Session);
         assert!((session.used - 0.57).abs() < 1e-9);
         assert_eq!(session.resets_at, Some(1_790_366_999));
         assert_eq!(usage.windows[1].period, Period::Week);
-        assert_eq!(usage.windows[2].model.as_deref(), Some("Opus"));
+        assert_eq!(usage.windows[2].model.as_deref(), Some("Fable"));
+        assert_eq!(usage.windows[3].model.as_deref(), Some("Opus"));
         assert_eq!(usage.plan.as_deref(), Some("Max 20x"));
     }
 
