@@ -268,9 +268,10 @@ fn expired(window: &Window, now: i64) -> bool {
     window.resets_at.is_some_and(|at| at <= now)
 }
 
-/// "Claude · Max 20x · live", or how long ago the figures are when they are
-/// not fresh: a login the tool has not renewed yet leaves the last live
-/// reading ageing in place instead of newer saved figures.
+/// "Claude · Max 20x · live · 45s ago", or how long ago the figures are when
+/// they are not fresh: a login the tool has not renewed yet leaves the last
+/// live reading ageing in place instead of newer saved figures. The age
+/// counts up to the second, so it shows when the figures were last read.
 fn limit_tool(ctx: &Ctx, usage: &Usage, area: Rect, buf: &mut Buffer) {
     let text = ctx.text;
     let mut name = vec![Span::raw(usage.name()).bold()];
@@ -278,24 +279,21 @@ fn limit_tool(ctx: &Ctx, usage: &Usage, area: Rect, buf: &mut Buffer) {
         name.push(ctx.muted(format!(" {plan}")));
     }
     let age = unix_now().saturating_sub(usage.as_of).max(0) as u64;
-    let freshness = match usage.source {
+    let ago = text.ago.replace("{}", &ctx.lang.age(age));
+    let mut pieces = vec![Piece::new(0, name)];
+    match usage.source {
         Source::Live if age <= LIVE_FRESH_SECS as u64 => {
-            Span::styled(text.live, Style::new().fg(ctx.palette.low))
+            let live = Span::styled(text.live, Style::new().fg(ctx.palette.low));
+            pieces.push(Piece::new(1, vec![live]));
+            pieces.push(Piece::new(2, vec![ctx.muted(ago)]));
         }
-        _ => {
-            let ago = text.ago.replace("{}", &ctx.lang.duration(age));
-            if age >= 3600 {
-                Span::styled(ago, Style::new().fg(ctx.palette.middle))
-            } else {
-                ctx.muted(ago)
-            }
+        _ if age >= 3600 => {
+            let ago = Span::styled(ago, Style::new().fg(ctx.palette.middle));
+            pieces.push(Piece::new(1, vec![ago]));
         }
-    };
-    ctx.line(
-        vec![Piece::new(0, name), Piece::new(1, vec![freshness])],
-        area,
-        buf,
-    );
+        _ => pieces.push(Piece::new(1, vec![ctx.muted(ago)])),
+    }
+    ctx.line(pieces, area, buf);
 }
 
 /// The words for a window: "session", "week", "week Opus".

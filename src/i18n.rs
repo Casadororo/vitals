@@ -331,6 +331,18 @@ impl Lang {
         }
     }
 
+    /// How old a reading is, to the second within the hour: "45s", "2m 05s";
+    /// then as a span of time.
+    pub fn age(self, seconds: u64) -> String {
+        if seconds >= 3600 {
+            return self.duration(seconds);
+        }
+        match (seconds / 60, seconds % 60) {
+            (0, seconds) => format!("{seconds}s"),
+            (minutes, seconds) => format!("{} {seconds:02}s", self.duration(minutes * 60)),
+        }
+    }
+
     /// When a limit starts over, in local time: "17:09" today, "tomorrow
     /// 09:00", "Thu 15:59" within a week, "Oct 1 15:59" later on.
     pub fn reset_time(self, at: i64, now: i64) -> String {

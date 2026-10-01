@@ -438,7 +438,7 @@ pub mod tests {
             "Max 5x",
             "live",
             "Codex",
-            "25m ago",
+            "25m 0",
             "session",
             "week",
             "57%",
@@ -455,7 +455,7 @@ pub mod tests {
             "semana",
             "renova",
             "em 1h 32min",
-            "há 25min",
+            "há 25min 0",
         ] {
             assert!(text.contains(wanted), "{wanted} missing:\n{text}");
         }
