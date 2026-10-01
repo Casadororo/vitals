@@ -114,12 +114,31 @@ percentage from green to yellow to red as it fills up.
 
 ## Install
 
+Download the archive for your system from the [latest
+release](https://github.com/victorlcampos/vitals/releases/latest): macOS
+(Apple silicon and Intel), Linux (x86_64 and ARM) or Windows. Unpack it and
+put `vitals` somewhere on your `PATH`, such as `~/.local/bin`. On macOS, a
+file a browser downloaded stays quarantined until you allow it: run `xattr -d
+com.apple.quarantine vitals` once.
+
+Or build it, with Rust 1.88 or newer ([rustup.rs](https://rustup.rs)):
+
 ```sh
 cargo install --git https://github.com/victorlcampos/vitals
 ```
 
-Needs Rust 1.88 or newer ([rustup.rs](https://rustup.rs)). Runs on macOS and
-Linux; on Windows it shows the totals, without the split of CPU time.
+Runs on macOS and Linux; on Windows it shows the totals, without the split of
+CPU time.
+
+### Update
+
+```sh
+vitals update           # installs the latest release over this vitals
+vitals update --check   # only tells whether there is a newer one
+```
+
+The new version replaces the old one only after it matches the SHA-256
+published with the release and reports the right version.
 
 ## Usage
 
@@ -247,7 +266,8 @@ editores, `v` o estilo do gráfico, `g` mostra ou esconde os gráficos, `c` os
 núcleos, `l` os limites de IA, `+` e `-` mudam o intervalo. O layout se
 refaz a cada redimensionamento, de tela cheia a uma faixa de uma linha. Tudo
 é salvo a cada mudança em `~/.config/vitals/state.json`. A interface fica em
-português quando `$LANG` começa com `pt`.
+português quando `$LANG` começa com `pt`. `vitals update` instala a versão
+mais nova.
 
 ## License
 

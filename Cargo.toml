@@ -1,6 +1,6 @@
 [package]
 name = "vitals"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Responsive terminal monitor of CPU, memory, swap and disk space, with htop's load average, tasks and uptime, and 50 color themes"
@@ -11,7 +11,7 @@ keywords = ["system-monitor", "tui", "cpu", "memory", "disk"]
 categories = ["command-line-utilities"]
 
 [dependencies]
-cerne = { git = "https://github.com/victorlcampos/cerne", tag = "v0.1.0", features = ["store", "tui"] }
+cerne = { git = "https://github.com/victorlcampos/cerne", tag = "v0.1.0", features = ["store", "tui", "update"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 clap = { version = "4", features = ["derive"] }
 ratatui = "0.30"

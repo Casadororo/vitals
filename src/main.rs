@@ -18,7 +18,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{self, KeyEventKind};
 use ratatui::{DefaultTerminal, Terminal};
@@ -35,8 +35,11 @@ use crate::theme::THEMES;
 /// cores fully busy is 80%. The layout fits anything from a full screen to a
 /// one-line strip, and every setting is saved.
 #[derive(Parser)]
-#[command(version, about)]
+#[command(version, about, args_conflicts_with_subcommands = true)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+
     /// Color theme, such as "Tokyo Night", "dracula" or "gruvbox" (see --list-themes)
     #[arg(short, long)]
     theme: Option<String>,
@@ -87,6 +90,16 @@ struct Cli {
     demo: bool,
 }
 
+#[derive(Subcommand)]
+enum Command {
+    /// Update vitals to the latest release
+    Update {
+        /// Only tell whether a newer version is out
+        #[arg(long)]
+        check: bool,
+    },
+}
+
 /// What wakes the screen up: a new reading or something the person did.
 enum Event {
     Sample(Box<Sample>),
@@ -96,6 +109,10 @@ enum Event {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if let Some(Command::Update { check }) = cli.command {
+        let version = env!("CARGO_PKG_VERSION");
+        return cerne::update::run("victorlcampos/vitals", "vitals", version, check);
+    }
     if cli.list_themes {
         for theme in &THEMES {
             println!("{}", theme.name);
