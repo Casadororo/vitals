@@ -139,9 +139,12 @@ pub fn draw(
         Item::Cores(CoreView::Strip) => cores_strip(ctx, area, buf),
         Item::MemBar => {
             let memory = &sample.memory;
+            // The bar fills to the memory in use, like its percentage: buffers
+            // and cache, which the system gives back, stay in the legend only.
             let slices: Vec<(f64, Color)> = memory
                 .parts
                 .iter()
+                .filter(|(part, _)| !matches!(part, Part::Buffers | Part::Cached))
                 .map(|&(part, bytes)| (ratio(bytes, memory.total), palette.part(part)))
                 .collect();
             meter(ctx, labeled(ctx), memory.used_ratio(), &slices, area, buf);
