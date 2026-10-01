@@ -68,6 +68,12 @@ struct Cli {
     #[arg(long)]
     no_limits: bool,
 
+    /// A Claude Code folder whose limits show, such as ~/.claude-2; repeat it
+    /// for each account [default: ~/.claude and the other ~/.claude* folders
+    /// with a login, or $CLAUDE_CONFIG_DIR]
+    #[arg(long, value_name = "DIR")]
+    claude_dir: Vec<PathBuf>,
+
     /// Interface language [default: from $LANG]
     #[arg(long, value_enum)]
     lang: Option<Lang>,
@@ -166,9 +172,9 @@ fn main() -> ExitCode {
     }
 
     if let Some((width, height)) = cli.snapshot {
-        return snapshot(app, width, height, cli.svg, cli.demo);
+        return snapshot(app, width, height, cli.svg, cli.demo, &cli.claude_dir);
     }
-    match ratatui::run(|terminal| run(terminal, &mut app, &mut store)) {
+    match ratatui::run(|terminal| run(terminal, &mut app, &mut store, &cli.claude_dir)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("vitals: {error}");
@@ -177,7 +183,12 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(terminal: &mut DefaultTerminal, app: &mut App, store: &mut Option<Store>) -> io::Result<()> {
+fn run(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    store: &mut Option<Store>,
+    claude_dirs: &[PathBuf],
+) -> io::Result<()> {
     let (sender, events) = mpsc::channel();
     let (intervals, interval_changes) = mpsc::channel();
     collect::spawn(
@@ -192,6 +203,7 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App, store: &mut Option<Store>)
         Event::Limits,
         wanted_changes,
         app.show_limits,
+        claude_dirs.to_vec(),
     );
     thread::spawn(move || {
         while let Ok(event) = event::read() {
@@ -236,7 +248,14 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App, store: &mut Option<Store>)
 
 /// Draws one screen off the terminal: as text on the standard output, or as
 /// an SVG picture.
-fn snapshot(mut app: App, width: u16, height: u16, svg: Option<PathBuf>, demo: bool) -> ExitCode {
+fn snapshot(
+    mut app: App,
+    width: u16,
+    height: u16,
+    svg: Option<PathBuf>,
+    demo: bool,
+    claude_dirs: &[PathBuf],
+) -> ExitCode {
     if demo {
         let (theme, interval) = (app.theme, app.interval);
         app = demo::app(app.lang);
@@ -248,7 +267,7 @@ fn snapshot(mut app: App, width: u16, height: u16, svg: Option<PathBuf>, demo: b
             app.push(collector.sample());
         }
         if app.show_limits {
-            app.limits = limits::read_once();
+            app.limits = limits::read_once(claude_dirs);
         }
     }
     let mut terminal = match Terminal::new(TestBackend::new(width, height)) {

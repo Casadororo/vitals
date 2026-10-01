@@ -391,6 +391,7 @@ mod tests {
             ],
             source: Source::Live,
             as_of: now,
+            account: None,
         }];
         let content = app.content();
         assert_eq!(content.limits[0], 2);

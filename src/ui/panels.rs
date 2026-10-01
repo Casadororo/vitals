@@ -79,7 +79,7 @@ pub fn bare_label(ctx: &Ctx, item: Item) -> Option<String> {
                 (None, Period::Month) => "30d".to_owned(),
                 (None, Period::Minutes(minutes)) => format!("{}h", minutes / 60),
             };
-            Some(format!("{} {span}", usage.tool.name()))
+            Some(format!("{} {span}", usage.name()))
         }
         _ => None,
     }
@@ -270,7 +270,7 @@ fn expired(window: &Window, now: i64) -> bool {
 /// reading ageing in place instead of newer saved figures.
 fn limit_tool(ctx: &Ctx, usage: &Usage, area: Rect, buf: &mut Buffer) {
     let text = ctx.text;
-    let mut name = vec![Span::raw(usage.tool.name()).bold()];
+    let mut name = vec![Span::raw(usage.name()).bold()];
     if let Some(plan) = &usage.plan {
         name.push(ctx.muted(format!(" {plan}")));
     }
@@ -329,7 +329,7 @@ fn limit(
         .app
         .limits
         .iter()
-        .map(|usage| usage.tool.name().width())
+        .map(|usage| usage.name().width())
         .max()
         .unwrap_or(0);
     let label_width = ctx
@@ -343,7 +343,7 @@ fn limit(
     let mut spans = Vec::new();
     match name {
         Some((_, usage)) if index == 0 => {
-            spans.push(Span::raw(pad(usage.tool.name(), name_width as u16)).bold());
+            spans.push(Span::raw(pad(&usage.name(), name_width as u16)).bold());
             spans.push(Span::raw(" "));
         }
         Some(_) => spans.push(Span::raw(" ".repeat(name_width + 1))),

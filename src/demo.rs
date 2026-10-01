@@ -112,6 +112,7 @@ pub fn limits() -> Vec<Usage> {
             ],
             source: Source::Live,
             as_of: now,
+            account: None,
         },
         Usage {
             tool: Tool::Codex,
@@ -122,6 +123,7 @@ pub fn limits() -> Vec<Usage> {
             ],
             source: Source::Saved,
             as_of: now - 25 * 60,
+            account: None,
         },
     ]
 }

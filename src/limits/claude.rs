@@ -1,7 +1,7 @@
 //! Claude Code's limits: live from the address its `/usage` asks, with its
 //! login, or else the last figures it saved in `~/.claude.json`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde_json::Value;
@@ -14,6 +14,11 @@ const OAUTH_BETA: &str = "oauth-2025-04-20";
 
 #[derive(Default)]
 pub struct Reader {
+    /// The folder given with `--claude-dir` or found beside `~/.claude`; none
+    /// is Claude Code's own.
+    dir: Option<PathBuf>,
+    /// The account's name, from its folder: "2" for `~/.claude-2`.
+    account: Option<String>,
     live: Option<Usage>,
     /// Unix seconds from which the address may be asked again.
     ask_after: i64,
@@ -24,6 +29,15 @@ pub struct Reader {
 }
 
 impl Reader {
+    /// A reader of the Claude Code folder given, such as `~/.claude-2`.
+    pub fn new(dir: PathBuf) -> Self {
+        Self {
+            account: account(&dir),
+            dir: Some(dir),
+            ..Self::default()
+        }
+    }
+
     pub fn read(&mut self, agent: &ureq::Agent, now: i64) -> Option<Usage> {
         if now >= self.ask_after {
             let (usage, wait) = self.ask(agent, now);
@@ -36,12 +50,13 @@ impl Reader {
         if let Some(saved) = &mut saved {
             saved.plan = self.plan.clone();
         }
-        newest(self.live.clone(), saved)
+        let account = self.account.clone();
+        newest(self.live.clone(), saved).map(|usage| Usage { account, ..usage })
     }
 
     /// The live figures, and how long to wait before asking again.
     fn ask(&mut self, agent: &ureq::Agent, now: i64) -> (Option<Usage>, i64) {
-        let Some(login) = login() else {
+        let Some(login) = login(self.dir.as_deref()) else {
             return (None, retry_after(0));
         };
         self.plan = login.plan.clone();
@@ -69,7 +84,7 @@ impl Reader {
     /// The figures Claude Code saved the last time it showed them, read again
     /// only when the file changes.
     fn saved(&mut self) -> Option<Usage> {
-        let path = global_config()?;
+        let path = global_config(self.dir.as_deref())?;
         let changed = files::modified(&path)?;
         if self.saved.as_ref().is_none_or(|(seen, _)| *seen != changed) {
             let usage = std::fs::read_to_string(&path)
@@ -82,19 +97,68 @@ impl Reader {
     }
 }
 
-/// Claude Code's folder: `$CLAUDE_CONFIG_DIR`, or `~/.claude`.
-fn config_dir() -> Option<PathBuf> {
-    std::env::var_os("CLAUDE_CONFIG_DIR")
-        .map(PathBuf::from)
-        .or_else(|| Some(files::home()?.join(".claude")))
+/// Claude Code's folder: the one given, `$CLAUDE_CONFIG_DIR`, or `~/.claude`.
+fn config_dir(given: Option<&Path>) -> Option<PathBuf> {
+    match given {
+        Some(dir) => Some(dir.to_path_buf()),
+        None => std::env::var_os("CLAUDE_CONFIG_DIR")
+            .map(PathBuf::from)
+            .or_else(|| Some(files::home()?.join(".claude"))),
+    }
 }
 
-/// Claude Code's global settings: `$CLAUDE_CONFIG_DIR/.claude.json`, or `~/.claude.json`.
-fn global_config() -> Option<PathBuf> {
-    match std::env::var_os("CLAUDE_CONFIG_DIR") {
-        Some(dir) => Some(PathBuf::from(dir).join(".claude.json")),
-        None => Some(files::home()?.join(".claude.json")),
+/// Claude Code's global settings: `.claude.json` in the folder given or in
+/// `$CLAUDE_CONFIG_DIR`, but `~/.claude.json` for the default `~/.claude`.
+fn global_config(given: Option<&Path>) -> Option<PathBuf> {
+    match given {
+        Some(dir) if !is_default(dir) => Some(dir.join(".claude.json")),
+        Some(_) => Some(files::home()?.join(".claude.json")),
+        None => match std::env::var_os("CLAUDE_CONFIG_DIR") {
+            Some(dir) => Some(PathBuf::from(dir).join(".claude.json")),
+            None => Some(files::home()?.join(".claude.json")),
+        },
     }
+}
+
+/// The folders people keep for more accounts beside `~/.claude`, such as
+/// `~/.claude-2`, when they hold a login or settings. None with
+/// `$CLAUDE_CONFIG_DIR` set: that folder alone is Claude Code's.
+pub fn other_folders() -> Vec<PathBuf> {
+    if std::env::var_os("CLAUDE_CONFIG_DIR").is_some() {
+        return Vec::new();
+    }
+    let Some(entries) = files::home().and_then(|home| std::fs::read_dir(home).ok()) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".claude"))
+        .map(|entry| entry.path())
+        .filter(|dir| {
+            !is_default(dir)
+                && dir.is_dir()
+                && (dir.join(".credentials.json").is_file() || dir.join(".claude.json").is_file())
+        })
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+/// Whether the folder is Claude Code's default, `~/.claude`.
+fn is_default(dir: &Path) -> bool {
+    files::home().is_some_and(|home| dir == home.join(".claude"))
+}
+
+/// The account's name, from its folder: "2" for `~/.claude-2`, "work" for
+/// `~/.claude-work`, none for `~/.claude`.
+fn account(dir: &Path) -> Option<String> {
+    let name = dir.file_name()?.to_string_lossy();
+    let name = name.trim_start_matches('.');
+    let rest = name
+        .strip_prefix("claude")
+        .unwrap_or(name)
+        .trim_start_matches(['-', '_']);
+    (!rest.is_empty()).then(|| rest.to_owned())
 }
 
 struct Login {
@@ -106,12 +170,18 @@ struct Login {
 
 /// Claude Code's login: in the macOS keychain, read with the same `security`
 /// command Claude Code uses, or in `~/.claude/.credentials.json` elsewhere.
-/// Whichever expires last wins, since the file can be an old copy.
-fn login() -> Option<Login> {
-    let from_file = config_dir()
+/// Whichever expires last wins, since the file can be an old copy. The
+/// keychain entry read is the default folder's, so another folder given
+/// counts on its file alone.
+fn login(given: Option<&Path>) -> Option<Login> {
+    let from_file = config_dir(given)
         .and_then(|dir| std::fs::read_to_string(dir.join(".credentials.json")).ok())
         .and_then(|text| parse_login(&text));
-    let from_keychain = keychain().and_then(|text| parse_login(&text));
+    let from_keychain = given
+        .is_none_or(is_default)
+        .then(keychain)
+        .flatten()
+        .and_then(|text| parse_login(&text));
     match (from_keychain, from_file) {
         (Some(a), Some(b)) => Some(if b.expires_at > a.expires_at { b } else { a }),
         (a, b) => a.or(b),
@@ -217,6 +287,7 @@ fn parse(body: &Value, source: Source, as_of: i64, plan: Option<String>) -> Opti
         windows,
         source,
         as_of,
+        account: None,
     })
 }
 

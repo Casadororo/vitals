@@ -133,6 +133,7 @@ fn parse_live(body: &Value, now: i64) -> Option<Usage> {
         windows,
         source: Source::Live,
         as_of: now,
+        account: None,
     })
 }
 
@@ -171,6 +172,7 @@ fn parse_log_line(line: &str) -> Option<Usage> {
         windows,
         source: Source::Saved,
         as_of,
+        account: None,
     })
 }
 

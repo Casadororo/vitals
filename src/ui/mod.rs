@@ -477,6 +477,7 @@ pub mod tests {
             }],
             source: Source::Live,
             as_of: now - 25 * 3600,
+            account: None,
         }];
         let text = screen(&draw(&app, 120, 40));
         assert!(

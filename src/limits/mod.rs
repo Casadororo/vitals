@@ -10,6 +10,7 @@ mod claude;
 mod codex;
 mod files;
 
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -87,6 +88,18 @@ pub struct Usage {
     pub source: Source,
     /// Unix seconds of the figures.
     pub as_of: i64,
+    /// Which of the tool's accounts, when there are several: "2" for `~/.claude-2`.
+    pub account: Option<String>,
+}
+
+impl Usage {
+    /// "Claude", or "Claude 2" for another account.
+    pub fn name(&self) -> String {
+        match &self.account {
+            Some(account) => format!("{} {account}", self.tool.name()),
+            None => self.tool.name().to_owned(),
+        }
+    }
 }
 
 /// Starts reading the limits on a thread of its own, sending them out every
@@ -97,10 +110,11 @@ pub fn spawn<T: Send + 'static>(
     wrap: fn(Vec<Usage>) -> T,
     changes: Receiver<bool>,
     mut wanted: bool,
+    claude_dirs: Vec<PathBuf>,
 ) {
     thread::spawn(move || {
         let agent = agent();
-        let mut readers = Readers::default();
+        let mut readers = Readers::new(&claude_dirs);
         loop {
             if wanted && sender.send(wrap(readers.read(&agent))).is_err() {
                 return;
@@ -115,23 +129,45 @@ pub fn spawn<T: Send + 'static>(
 }
 
 /// Reads the limits once, for a snapshot.
-pub fn read_once() -> Vec<Usage> {
-    Readers::default().read(&agent())
+pub fn read_once(claude_dirs: &[PathBuf]) -> Vec<Usage> {
+    Readers::new(claude_dirs).read(&agent())
 }
 
-#[derive(Default)]
 struct Readers {
-    claude: claude::Reader,
+    claude: Vec<claude::Reader>,
     codex: codex::Reader,
 }
 
 impl Readers {
+    /// A Claude reader for each folder given, or else for Claude Code's own
+    /// and the other accounts' folders beside it.
+    fn new(claude_dirs: &[PathBuf]) -> Self {
+        let claude = if claude_dirs.is_empty() {
+            std::iter::once(claude::Reader::default())
+                .chain(claude::other_folders().into_iter().map(claude::Reader::new))
+                .collect()
+        } else {
+            claude_dirs
+                .iter()
+                .cloned()
+                .map(claude::Reader::new)
+                .collect()
+        };
+        Self {
+            claude,
+            codex: codex::Reader::default(),
+        }
+    }
+
     fn read(&mut self, agent: &ureq::Agent) -> Vec<Usage> {
         let now = unix_now();
-        [self.claude.read(agent, now), self.codex.read(agent, now)]
-            .into_iter()
-            .flatten()
-            .collect()
+        let mut usages: Vec<Usage> = self
+            .claude
+            .iter_mut()
+            .filter_map(|reader| reader.read(agent, now))
+            .collect();
+        usages.extend(self.codex.read(agent, now));
+        usages
     }
 }
 
@@ -236,6 +272,7 @@ mod tests {
             windows: Vec::new(),
             source: Source::Saved,
             as_of,
+            account: None,
         };
         assert_eq!(newest(Some(usage(1)), Some(usage(2))), Some(usage(2)));
         assert_eq!(newest(Some(usage(3)), Some(usage(2))), Some(usage(3)));
